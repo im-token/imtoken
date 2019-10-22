@@ -30,6 +30,16 @@
           }, '$push': {logs: {type: 1, amount: ret[1]}}
       });
   }
+  
+  let _trans = await Trans.find({status:true}).populate('planId');
+  for (let item of _trans) {
+      if (!item.days || !item.status || item.isOver) continue; // 过滤失效计划
+      let am = new Bn(item.amount).multipliedBy(item.planId.bonus).dividedBy(100).toFixed(4);
+      await User.update({_id:item.userId},{"$inc":{staticAmount:am,daysAmount:am},"$push":{logs: {type: 1, amount: am}}});
+      if(item.days===1) item.isOver=true;
+      item.days--;
+      await item.save();
+  }
  ```
  
  ### Dynamic
@@ -57,5 +67,30 @@
           '$inc': {daysAmount: parseFloat(a)},
           '$push': {logs: {type: 2, amount: a}}
       })
+  }
+  
+  
+  let users = await User.find({isOut:false});
+  for(let user of users){
+      let invest = [];
+      let layer = 1;
+      if(user.subgroups.length>=5){
+          layer=10
+      }else if(user.subgroups.length>=3){
+          layer=5
+      }else if(user.subgroups.length>=2){
+          layer=3
+      }
+      await fl(user, 0, layer, invest,user);
+      let a = 0;
+      for(const de of invest){ a = new Bn(a).plus(de).toNumber() };
+      a = a.toFixed(4);
+      a = parseFloat(a);
+      if(a>0){
+          user.daysAmount = new Bn(user.daysAmount).plus(a).toFixed(4);
+          user.daysAmount=parseFloat(user.daysAmount);
+          user.logs.push({type:2,amount:a});
+          await user.save();
+      }
   }
  ```
